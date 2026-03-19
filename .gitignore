@@ -49,3 +49,5 @@ examples/stripe-app/*/.build
 examples/stripe-app/*/yarn.lock
 .gm-stop-verified
 .prd
+
+.code-search/

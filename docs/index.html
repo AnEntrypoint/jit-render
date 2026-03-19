@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>jit-render sandbox</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #f8fafc;
+      letter-spacing: -0.01em;
+    }
+
+    header .badge {
+      font-size: .7rem;
+      font-weight: 600;
+      background: #1e3a5f;
+      color: #60a5fa;
+      border: 1px solid #2563eb44;
+      border-radius: 4px;
+      padding: 2px 7px;
+    }
+
+    header .links {
+      margin-left: auto;
+      display: flex;
+      gap: 16px;
+    }
+
+    header .links a {
+      color: #94a3b8;
+      font-size: .8rem;
+      text-decoration: none;
+    }
+
+    header .links a:hover { color: #e2e8f0; }
+
+    .layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 480px;
+      min-width: 320px;
+      max-width: 50vw;
+      display: flex;
+      flex-direction: column;
+      background: #0f172a;
+      border-right: 1px solid #1e293b;
+      flex-shrink: 0;
+    }
+
+    .sidebar-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid #1e293b;
+      flex-shrink: 0;
+    }
+
+    .sidebar-top .label {
+      font-size: .75rem;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .sidebar-top .example-select {
+      font-size: .8rem;
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+
+    #editor {
+      flex: 1;
+      resize: none;
+      border: none;
+      outline: none;
+      background: #0a0f1a;
+      color: #a5f3fc;
+      font-family: "Fira Code", "Cascadia Code", ui-monospace, monospace;
+      font-size: .8rem;
+      line-height: 1.6;
+      padding: 16px;
+      tab-size: 2;
+      overflow: auto;
+    }
+
+    .error-panel {
+      display: none;
+      background: #1a0a0a;
+      border-top: 1px solid #7f1d1d;
+      padding: 10px 16px;
+      font-size: .78rem;
+      color: #fca5a5;
+      font-family: ui-monospace, monospace;
+      max-height: 100px;
+      overflow: auto;
+      flex-shrink: 0;
+    }
+
+    .error-panel.visible { display: block; }
+
+    .preview-panel {
+      flex: 1;
+      overflow: auto;
+      background: #f8fafc;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .preview-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+      flex-shrink: 0;
+    }
+
+    .preview-top .label {
+      font-size: .75rem;
+      font-weight: 600;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    #render-btn {
+      font-size: .8rem;
+      font-weight: 600;
+      background: #0f172a;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 5px 14px;
+      cursor: pointer;
+    }
+
+    #render-btn:hover { background: #1e293b; }
+
+    #preview {
+      flex: 1;
+      padding: 24px;
+      min-height: 0;
+    }
+
+    .catalog-panel {
+      border-top: 1px solid #e2e8f0;
+      background: white;
+      flex-shrink: 0;
+      max-height: 220px;
+      overflow: auto;
+    }
+
+    .catalog-header {
+      padding: 8px 16px;
+      font-size: .72rem;
+      font-weight: 700;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      border-bottom: 1px solid #f1f5f9;
+      background: white;
+      position: sticky;
+      top: 0;
+    }
+
+    .catalog-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px 16px 14px;
+    }
+
+    .catalog-chip {
+      font-size: .72rem;
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 2px 8px;
+      cursor: default;
+      white-space: nowrap;
+    }
+
+    .catalog-chip:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>jit-render</h1>
+  <span class="badge">sandbox</span>
+  <div class="links">
+    <a href="https://www.npmjs.com/package/jit-render" target="_blank">npm</a>
+    <a href="https://github.com/AnEntrypoint/jit-render" target="_blank">GitHub</a>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <span class="label">JSON Spec</span>
+      <select class="example-select" id="example-select">
+        <option value="counter">Counter (state)</option>
+        <option value="profile">User Profile Card</option>
+        <option value="form">Settings Form</option>
+        <option value="dashboard">Status Dashboard</option>
+        <option value="pricing">Pricing Grid</option>
+      </select>
+    </div>
+    <textarea id="editor" spellcheck="false"></textarea>
+    <div class="error-panel" id="error-panel"></div>
+  </div>
+
+  <div class="preview-panel">
+    <div class="preview-top">
+      <span class="label">Preview</span>
+      <button id="render-btn">Render</button>
+    </div>
+    <div id="preview"></div>
+    <div class="catalog-panel">
+      <div class="catalog-header">Available components</div>
+      <div class="catalog-grid" id="catalog-grid"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { Renderer, createWebjsxRegistry } from 'https://esm.sh/jit-render';
+import { webjsxComponentDefinitions } from 'https://esm.sh/jit-render/catalog';
+
+const registry = createWebjsxRegistry();
+
+const EXAMPLES = {
+  counter: {
+    root: "card",
+    state: { count: 0 },
+    elements: {
+      card: {
+        type: "Card",
+        props: { title: "Counter Demo", description: "State binding with setState action", maxWidth: "sm", centered: true },
+        children: ["stack"]
+      },
+      stack: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "md", align: "center", justify: null },
+        children: ["heading", "badges", "sep", "btns", "reset"]
+      },
+      heading: {
+        type: "Heading",
+        props: { text: { $template: "Count: ${/count}" }, level: "h1" }
+      },
+      badges: {
+        type: "Stack",
+        props: { direction: "horizontal", gap: "sm", align: "center", justify: "center" },
+        children: ["b1", "b2", "b3"]
+      },
+      b1: { type: "Badge", props: { text: "jit-render", variant: "default" } },
+      b2: { type: "Badge", props: { text: "state binding", variant: "secondary" } },
+      b3: { type: "Badge", props: { text: "setState", variant: "outline" } },
+      sep: { type: "Separator", props: { orientation: null } },
+      btns: {
+        type: "Stack",
+        props: { direction: "horizontal", gap: "sm", align: "center", justify: "center" },
+        children: ["decBtn", "incBtn"]
+      },
+      decBtn: {
+        type: "Button",
+        props: { label: "− Decrement", variant: "secondary", disabled: null },
+        on: { press: { action: "setState", params: { statePath: "/count", value: { $computed: "dec", args: { n: { $state: "/count" } } } } } }
+      },
+      incBtn: {
+        type: "Button",
+        props: { label: "+ Increment", variant: "primary", disabled: null },
+        on: { press: { action: "setState", params: { statePath: "/count", value: { $computed: "inc", args: { n: { $state: "/count" } } } } } }
+      },
+      reset: {
+        type: "Button",
+        props: { label: "Reset", variant: "danger", disabled: null },
+        on: { press: { action: "setState", params: { statePath: "/count", value: 0 } } }
+      }
+    }
+  },
+
+  profile: {
+    root: "card",
+    elements: {
+      card: {
+        type: "Card",
+        props: { title: "User Profile", description: null, maxWidth: "md", centered: null },
+        children: ["stack"]
+      },
+      stack: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "md", align: null, justify: null },
+        children: ["heading", "text", "badges", "sep", "progress", "alert"]
+      },
+      heading: { type: "Heading", props: { text: "Jane Cooper", level: "h2" } },
+      text: {
+        type: "Text",
+        props: { text: "Senior software engineer based in San Francisco. Passionate about building accessible, high-performance web applications.", variant: "muted" }
+      },
+      badges: {
+        type: "Stack",
+        props: { direction: "horizontal", gap: "sm", align: null, justify: null },
+        children: ["b1", "b2", "b3"]
+      },
+      b1: { type: "Badge", props: { text: "TypeScript", variant: "default" } },
+      b2: { type: "Badge", props: { text: "React", variant: "secondary" } },
+      b3: { type: "Badge", props: { text: "Node.js", variant: "outline" } },
+      sep: { type: "Separator", props: { orientation: null } },
+      progress: { type: "Progress", props: { value: 72, max: 100, label: "Profile completion" } },
+      alert: { type: "Alert", props: { title: "Available for hire", message: "Open to senior engineering roles.", type: "success" } }
+    }
+  },
+
+  form: {
+    root: "card",
+    state: { name: "Ada Lovelace", email: "ada@example.com", role: "Engineer", notifications: true, darkMode: false },
+    elements: {
+      card: {
+        type: "Card",
+        props: { title: "Account Settings", description: "Manage your preferences", maxWidth: "md", centered: null },
+        children: ["form"]
+      },
+      form: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "md", align: null, justify: null },
+        children: ["nameInput", "emailInput", "roleSelect", "sep", "notifSwitch", "darkSwitch", "sep2", "actions"]
+      },
+      nameInput: { type: "Input", props: { label: "Full Name", name: "name", type: "text", placeholder: "Your name", value: { $bindState: "/name" }, checks: null } },
+      emailInput: { type: "Input", props: { label: "Email", name: "email", type: "email", placeholder: "you@example.com", value: { $bindState: "/email" }, checks: null } },
+      roleSelect: {
+        type: "Select",
+        props: { label: "Role", name: "role", options: ["Engineer", "Designer", "Product Manager", "Data Scientist"], placeholder: null, value: { $bindState: "/role" }, checks: null }
+      },
+      sep: { type: "Separator", props: { orientation: null } },
+      notifSwitch: { type: "Switch", props: { label: "Email notifications", name: "notifications", checked: { $bindState: "/notifications" } } },
+      darkSwitch: { type: "Switch", props: { label: "Dark mode", name: "darkMode", checked: { $bindState: "/darkMode" } } },
+      sep2: { type: "Separator", props: { orientation: null } },
+      actions: {
+        type: "Stack",
+        props: { direction: "horizontal", gap: "sm", align: null, justify: "end" },
+        children: ["cancelBtn", "saveBtn"]
+      },
+      cancelBtn: { type: "Button", props: { label: "Cancel", variant: "secondary", disabled: null } },
+      saveBtn: { type: "Button", props: { label: "Save Changes", variant: "primary", disabled: null } }
+    }
+  },
+
+  dashboard: {
+    root: "root",
+    elements: {
+      root: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "lg", align: null, justify: null },
+        children: ["heading", "alertOk", "alertWarn", "sep", "table", "sep2", "accordion"]
+      },
+      heading: { type: "Heading", props: { text: "System Status", level: "h1" } },
+      alertOk: { type: "Alert", props: { title: "API", message: "All systems operational — 99.98% uptime this month", type: "success" } },
+      alertWarn: { type: "Alert", props: { title: "Database", message: "Elevated latency detected in us-east-1 region", type: "warning" } },
+      sep: { type: "Separator", props: { orientation: null } },
+      table: {
+        type: "Table",
+        props: {
+          columns: ["Service", "Status", "Latency", "Uptime"],
+          rows: [
+            ["API Gateway", "Operational", "12ms", "99.99%"],
+            ["Auth Service", "Operational", "8ms", "99.98%"],
+            ["Database", "Degraded", "145ms", "99.85%"],
+            ["CDN", "Operational", "3ms", "100%"],
+            ["Workers", "Operational", "22ms", "99.97%"]
+          ],
+          caption: "Last updated 2 minutes ago"
+        }
+      },
+      sep2: { type: "Separator", props: { orientation: null } },
+      accordion: {
+        type: "Accordion",
+        props: {
+          items: [
+            { title: "What does 'Degraded' mean?", content: "The service is operational but experiencing slower response times than normal. We are actively investigating." },
+            { title: "How is uptime calculated?", content: "Uptime is measured over the current calendar month based on successful health-check pings every 30 seconds." },
+            { title: "How do I subscribe to updates?", content: "Subscribe to incident notifications via email or webhook on the Settings page." }
+          ],
+          type: "single"
+        }
+      }
+    }
+  },
+
+  pricing: {
+    root: "outer",
+    elements: {
+      outer: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "lg", align: null, justify: null },
+        children: ["header", "grid"]
+      },
+      header: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "sm", align: "center", justify: null },
+        children: ["title", "subtitle"]
+      },
+      title: { type: "Heading", props: { text: "Simple, transparent pricing", level: "h1" } },
+      subtitle: { type: "Text", props: { text: "Choose the plan that fits your needs. Upgrade or downgrade at any time.", variant: "muted" } },
+      grid: { type: "Grid", props: { columns: 3, gap: "md" }, children: ["free", "pro", "enterprise"] },
+      free: {
+        type: "Card",
+        props: { title: "Free", description: "$0/month", maxWidth: null, centered: null },
+        children: ["freeContent"]
+      },
+      freeContent: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "sm", align: null, justify: null },
+        children: ["f1", "f2", "f3", "freeBtn"]
+      },
+      f1: { type: "Text", props: { text: "Up to 3 projects", variant: "body" } },
+      f2: { type: "Text", props: { text: "1 GB storage", variant: "body" } },
+      f3: { type: "Text", props: { text: "Community support", variant: "body" } },
+      freeBtn: { type: "Button", props: { label: "Get Started", variant: "secondary", disabled: null } },
+      pro: {
+        type: "Card",
+        props: { title: "Pro", description: "$19/month", maxWidth: null, centered: null },
+        children: ["proContent"]
+      },
+      proContent: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "sm", align: null, justify: null },
+        children: ["p1", "p2", "p3", "p4", "proBtn"]
+      },
+      p1: { type: "Text", props: { text: "Unlimited projects", variant: "body" } },
+      p2: { type: "Text", props: { text: "50 GB storage", variant: "body" } },
+      p3: { type: "Text", props: { text: "Priority support", variant: "body" } },
+      p4: { type: "Text", props: { text: "Custom domains", variant: "body" } },
+      proBtn: { type: "Button", props: { label: "Upgrade to Pro", variant: "primary", disabled: null } },
+      enterprise: {
+        type: "Card",
+        props: { title: "Enterprise", description: "Custom pricing", maxWidth: null, centered: null },
+        children: ["entContent"]
+      },
+      entContent: {
+        type: "Stack",
+        props: { direction: "vertical", gap: "sm", align: null, justify: null },
+        children: ["e1", "e2", "e3", "e4", "entBtn"]
+      },
+      e1: { type: "Text", props: { text: "Everything in Pro", variant: "body" } },
+      e2: { type: "Text", props: { text: "Unlimited storage", variant: "body" } },
+      e3: { type: "Text", props: { text: "Dedicated support", variant: "body" } },
+      e4: { type: "Text", props: { text: "SLA guarantees", variant: "body" } },
+      entBtn: { type: "Button", props: { label: "Contact Sales", variant: "secondary", disabled: null } }
+    }
+  }
+};
+
+const editor = document.getElementById('editor');
+const errorPanel = document.getElementById('error-panel');
+const preview = document.getElementById('preview');
+const catalogGrid = document.getElementById('catalog-grid');
+const exampleSelect = document.getElementById('example-select');
+const renderBtn = document.getElementById('render-btn');
+
+let renderer = null;
+
+function showError(msg) {
+  errorPanel.textContent = msg;
+  errorPanel.classList.add('visible');
+}
+
+function clearError() {
+  errorPanel.textContent = '';
+  errorPanel.classList.remove('visible');
+}
+
+function renderSpec() {
+  let spec;
+  try {
+    spec = JSON.parse(editor.value);
+  } catch (err) {
+    showError('JSON parse error: ' + err.message);
+    return;
+  }
+  clearError();
+  try {
+    const functions = {
+      inc: ({ n }) => (typeof n === 'number' ? n + 1 : 1),
+      dec: ({ n }) => (typeof n === 'number' ? n - 1 : -1),
+    };
+    if (!renderer) {
+      renderer = new Renderer({ spec, registry, functions });
+      renderer.mount(preview);
+    } else {
+      renderer.update({ spec, functions });
+    }
+  } catch (err) {
+    showError('Render error: ' + err.message);
+  }
+}
+
+function loadExample(key) {
+  const spec = EXAMPLES[key];
+  if (!spec) return;
+  renderer = null;
+  preview.innerHTML = '';
+  editor.value = JSON.stringify(spec, null, 2);
+  renderSpec();
+}
+
+function buildCatalog() {
+  const defs = webjsxComponentDefinitions;
+  for (const [name, def] of Object.entries(defs)) {
+    const chip = document.createElement('div');
+    chip.className = 'catalog-chip';
+    chip.textContent = name;
+    chip.title = def.description || '';
+    catalogGrid.appendChild(chip);
+  }
+}
+
+let debounceTimer;
+editor.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    renderer = null;
+    preview.innerHTML = '';
+    renderSpec();
+  }, 300);
+});
+
+renderBtn.addEventListener('click', () => {
+  renderer = null;
+  preview.innerHTML = '';
+  renderSpec();
+});
+
+exampleSelect.addEventListener('change', () => {
+  loadExample(exampleSelect.value);
+});
+
+buildCatalog();
+loadExample('counter');
+</script>
+</body>
+</html>
