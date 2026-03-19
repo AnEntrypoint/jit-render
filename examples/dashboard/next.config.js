@@ -3,4 +3,4 @@ const nextConfig = {
   transpilePackages: ['@json-render/core', '@json-render/react'],
 };
 
-module.exports = nextConfig;
+export default nextConfig;

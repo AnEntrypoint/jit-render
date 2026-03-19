@@ -1,7 +1,31 @@
 {
   "name": "@json-render/core",
-  "version": "0.1.0",
+  "version": "0.14.1",
+  "license": "Apache-2.0",
   "description": "JSON becomes real things. Define your catalog, register your components, let AI generate.",
+  "keywords": [
+    "json",
+    "ui",
+    "react",
+    "ai",
+    "generative-ui",
+    "llm",
+    "schema",
+    "zod",
+    "streaming"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vercel-labs/json-render.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://json-render.dev",
+  "bugs": {
+    "url": "https://github.com/vercel-labs/json-render/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
@@ -10,6 +34,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./store-utils": {
+      "types": "./dist/store-utils.d.ts",
+      "import": "./dist/store-utils.mjs",
+      "require": "./dist/store-utils.js"
     }
   },
   "files": [
@@ -21,14 +50,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^3.23.8"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@repo/typescript-config": "workspace:*",
+    "@internal/typescript-config": "workspace:*",
     "tsup": "^8.0.2",
     "typescript": "^5.4.5"
   },
   "peerDependencies": {
-    "zod": "^3.0.0"
+    "zod": "^4.0.0"
   }
 }

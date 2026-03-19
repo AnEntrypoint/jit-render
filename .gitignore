@@ -4,13 +4,11 @@
 node_modules
 .pnp
 .pnp.js
+.pnpm-store/
 
 # Local env files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env*
+!.env.example
 
 # Testing
 coverage
@@ -21,11 +19,16 @@ coverage
 # Vercel
 .vercel
 
+# Expo
+.expo/
+
 # Build Outputs
 .next/
 out/
 build
 dist
+*.tsbuildinfo
+.svelte-kit/
 
 
 # Debug
@@ -39,3 +42,10 @@ yarn-error.log*
 
 # opensrc - source code for packages
 opensrc/
+
+# Stripe apps (generated from template + build artifacts)
+examples/stripe-app/*/stripe-app.json
+examples/stripe-app/*/.build
+examples/stripe-app/*/yarn.lock
+.gm-stop-verified
+.prd

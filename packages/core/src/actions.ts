@@ -1,6 +1,6 @@
-import { z } from 'zod';
-import type { DynamicValue, DataModel } from './types';
-import { DynamicValueSchema, resolveDynamicValue } from './types';
+import { z } from "zod";
+import type { DynamicValue, StateModel } from "./types";
+import { DynamicValueSchema, resolveDynamicValue } from "./types";
 
 /**
  * Confirmation dialog configuration
@@ -10,7 +10,7 @@ export interface ActionConfirm {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  variant?: 'default' | 'danger';
+  variant?: "default" | "danger";
 }
 
 /**
@@ -29,11 +29,16 @@ export type ActionOnError =
   | { action: string };
 
 /**
- * Rich action definition
+ * Action binding — maps an event to an action invocation.
+ *
+ * Used inside the `on` field of a UIElement:
+ * ```json
+ * { "on": { "press": { "action": "setState", "params": { "statePath": "/x", "value": 1 } } } }
+ * ```
  */
-export interface Action {
+export interface ActionBinding {
   /** Action name (must be in catalog) */
-  name: string;
+  action: string;
   /** Parameters to pass to the action handler */
   params?: Record<string, DynamicValue>;
   /** Confirmation dialog before execution */
@@ -42,7 +47,14 @@ export interface Action {
   onSuccess?: ActionOnSuccess;
   /** Handler after failed execution */
   onError?: ActionOnError;
+  /** Whether to prevent default browser behavior (e.g. navigation on links) */
+  preventDefault?: boolean;
 }
+
+/**
+ * @deprecated Use ActionBinding instead
+ */
+export type Action = ActionBinding;
 
 /**
  * Schema for action confirmation
@@ -52,7 +64,7 @@ export const ActionConfirmSchema = z.object({
   message: z.string(),
   confirmLabel: z.string().optional(),
   cancelLabel: z.string().optional(),
-  variant: z.enum(['default', 'danger']).optional(),
+  variant: z.enum(["default", "danger"]).optional(),
 });
 
 /**
@@ -60,7 +72,7 @@ export const ActionConfirmSchema = z.object({
  */
 export const ActionOnSuccessSchema = z.union([
   z.object({ navigate: z.string() }),
-  z.object({ set: z.record(z.unknown()) }),
+  z.object({ set: z.record(z.string(), z.unknown()) }),
   z.object({ action: z.string() }),
 ]);
 
@@ -68,27 +80,34 @@ export const ActionOnSuccessSchema = z.union([
  * Schema for error handlers
  */
 export const ActionOnErrorSchema = z.union([
-  z.object({ set: z.record(z.unknown()) }),
+  z.object({ set: z.record(z.string(), z.unknown()) }),
   z.object({ action: z.string() }),
 ]);
 
 /**
- * Full action schema
+ * Full action binding schema
  */
-export const ActionSchema = z.object({
-  name: z.string(),
-  params: z.record(DynamicValueSchema).optional(),
+export const ActionBindingSchema = z.object({
+  action: z.string(),
+  params: z.record(z.string(), DynamicValueSchema).optional(),
   confirm: ActionConfirmSchema.optional(),
   onSuccess: ActionOnSuccessSchema.optional(),
   onError: ActionOnErrorSchema.optional(),
+  preventDefault: z.boolean().optional(),
 });
+
+/**
+ * @deprecated Use ActionBindingSchema instead
+ */
+export const ActionSchema = ActionBindingSchema;
 
 /**
  * Action handler function signature
  */
-export type ActionHandler<TParams = Record<string, unknown>, TResult = unknown> = (
-  params: TParams
-) => Promise<TResult> | TResult;
+export type ActionHandler<
+  TParams = Record<string, unknown>,
+  TResult = unknown,
+> = (params: TParams) => Promise<TResult> | TResult;
 
 /**
  * Action definition in catalog
@@ -104,7 +123,7 @@ export interface ActionDefinition<TParams = Record<string, unknown>> {
  * Resolved action with all dynamic values resolved
  */
 export interface ResolvedAction {
-  name: string;
+  action: string;
   params: Record<string, unknown>;
   confirm?: ActionConfirm;
   onSuccess?: ActionOnSuccess;
@@ -112,43 +131,49 @@ export interface ResolvedAction {
 }
 
 /**
- * Resolve all dynamic values in an action
+ * Resolve all dynamic values in an action binding
  */
-export function resolveAction(action: Action, dataModel: DataModel): ResolvedAction {
+export function resolveAction(
+  binding: ActionBinding,
+  stateModel: StateModel,
+): ResolvedAction {
   const resolvedParams: Record<string, unknown> = {};
-  
-  if (action.params) {
-    for (const [key, value] of Object.entries(action.params)) {
-      resolvedParams[key] = resolveDynamicValue(value, dataModel);
+
+  if (binding.params) {
+    for (const [key, value] of Object.entries(binding.params)) {
+      resolvedParams[key] = resolveDynamicValue(value, stateModel);
     }
   }
-  
+
   // Interpolate confirmation message if present
-  let confirm = action.confirm;
+  let confirm = binding.confirm;
   if (confirm) {
     confirm = {
       ...confirm,
-      message: interpolateString(confirm.message, dataModel),
-      title: interpolateString(confirm.title, dataModel),
+      message: interpolateString(confirm.message, stateModel),
+      title: interpolateString(confirm.title, stateModel),
     };
   }
-  
+
   return {
-    name: action.name,
+    action: binding.action,
     params: resolvedParams,
     confirm,
-    onSuccess: action.onSuccess,
-    onError: action.onError,
+    onSuccess: binding.onSuccess,
+    onError: binding.onError,
   };
 }
 
 /**
  * Interpolate ${path} expressions in a string
  */
-export function interpolateString(template: string, dataModel: DataModel): string {
+export function interpolateString(
+  template: string,
+  stateModel: StateModel,
+): string {
   return template.replace(/\$\{([^}]+)\}/g, (_, path) => {
-    const value = resolveDynamicValue({ path }, dataModel);
-    return String(value ?? '');
+    const value = resolveDynamicValue({ $state: path }, stateModel);
+    return String(value ?? "");
   });
 }
 
@@ -160,8 +185,8 @@ export interface ActionExecutionContext {
   action: ResolvedAction;
   /** The action handler from the host */
   handler: ActionHandler;
-  /** Function to update data model */
-  setData: (path: string, value: unknown) => void;
+  /** Function to update state model */
+  setState: (path: string, value: unknown) => void;
   /** Function to navigate */
   navigate?: (path: string) => void;
   /** Function to execute another action */
@@ -171,36 +196,39 @@ export interface ActionExecutionContext {
 /**
  * Execute an action with all callbacks
  */
-export async function executeAction(ctx: ActionExecutionContext): Promise<void> {
-  const { action, handler, setData, navigate, executeAction } = ctx;
-  
+export async function executeAction(
+  ctx: ActionExecutionContext,
+): Promise<void> {
+  const { action, handler, setState, navigate, executeAction } = ctx;
+
   try {
     await handler(action.params);
-    
+
     // Handle success
     if (action.onSuccess) {
-      if ('navigate' in action.onSuccess && navigate) {
+      if ("navigate" in action.onSuccess && navigate) {
         navigate(action.onSuccess.navigate);
-      } else if ('set' in action.onSuccess) {
+      } else if ("set" in action.onSuccess) {
         for (const [path, value] of Object.entries(action.onSuccess.set)) {
-          setData(path, value);
+          setState(path, value);
         }
-      } else if ('action' in action.onSuccess && executeAction) {
+      } else if ("action" in action.onSuccess && executeAction) {
         await executeAction(action.onSuccess.action);
       }
     }
   } catch (error) {
     // Handle error
     if (action.onError) {
-      if ('set' in action.onError) {
+      if ("set" in action.onError) {
         for (const [path, value] of Object.entries(action.onError.set)) {
           // Replace $error.message with actual error
-          const resolvedValue = typeof value === 'string' && value === '$error.message'
-            ? (error as Error).message
-            : value;
-          setData(path, resolvedValue);
+          const resolvedValue =
+            typeof value === "string" && value === "$error.message"
+              ? (error as Error).message
+              : value;
+          setState(path, resolvedValue);
         }
-      } else if ('action' in action.onError && executeAction) {
+      } else if ("action" in action.onError && executeAction) {
         await executeAction(action.onError.action);
       }
     } else {
@@ -210,34 +238,42 @@ export async function executeAction(ctx: ActionExecutionContext): Promise<void> 
 }
 
 /**
- * Helper to create actions
+ * Helper to create action bindings
  */
-export const action = {
-  /** Create a simple action */
-  simple: (name: string, params?: Record<string, DynamicValue>): Action => ({
-    name,
+export const actionBinding = {
+  /** Create a simple action binding */
+  simple: (
+    actionName: string,
+    params?: Record<string, DynamicValue>,
+  ): ActionBinding => ({
+    action: actionName,
     params,
   }),
-  
-  /** Create an action with confirmation */
+
+  /** Create an action binding with confirmation */
   withConfirm: (
-    name: string,
+    actionName: string,
     confirm: ActionConfirm,
-    params?: Record<string, DynamicValue>
-  ): Action => ({
-    name,
+    params?: Record<string, DynamicValue>,
+  ): ActionBinding => ({
+    action: actionName,
     params,
     confirm,
   }),
-  
-  /** Create an action with success handler */
+
+  /** Create an action binding with success handler */
   withSuccess: (
-    name: string,
+    actionName: string,
     onSuccess: ActionOnSuccess,
-    params?: Record<string, DynamicValue>
-  ): Action => ({
-    name,
+    params?: Record<string, DynamicValue>,
+  ): ActionBinding => ({
+    action: actionName,
     params,
     onSuccess,
   }),
 };
+
+/**
+ * @deprecated Use actionBinding instead
+ */
+export const action = actionBinding;

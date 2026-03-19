@@ -1,12 +1,17 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useMemo, type ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useMemo,
+  type ReactNode,
+} from "react";
 import {
   evaluateVisibility,
   type VisibilityCondition,
   type VisibilityContext as CoreVisibilityContext,
-} from '@json-render/core';
-import { useData } from './data';
+} from "@json-render/core";
+import { useStateStore } from "./state";
 
 /**
  * Visibility context value
@@ -31,25 +36,24 @@ export interface VisibilityProviderProps {
  * Provider for visibility evaluation
  */
 export function VisibilityProvider({ children }: VisibilityProviderProps) {
-  const { data, authState } = useData();
+  const { state } = useStateStore();
 
   const ctx: CoreVisibilityContext = useMemo(
     () => ({
-      dataModel: data,
-      authState,
+      stateModel: state,
     }),
-    [data, authState]
+    [state],
   );
 
   const isVisible = useMemo(
     () => (condition: VisibilityCondition | undefined) =>
       evaluateVisibility(condition, ctx),
-    [ctx]
+    [ctx],
   );
 
   const value = useMemo<VisibilityContextValue>(
     () => ({ isVisible, ctx }),
-    [isVisible, ctx]
+    [isVisible, ctx],
   );
 
   return (
@@ -65,7 +69,7 @@ export function VisibilityProvider({ children }: VisibilityProviderProps) {
 export function useVisibility(): VisibilityContextValue {
   const ctx = useContext(VisibilityContext);
   if (!ctx) {
-    throw new Error('useVisibility must be used within a VisibilityProvider');
+    throw new Error("useVisibility must be used within a VisibilityProvider");
   }
   return ctx;
 }
@@ -73,7 +77,9 @@ export function useVisibility(): VisibilityContextValue {
 /**
  * Hook to check if a condition is visible
  */
-export function useIsVisible(condition: VisibilityCondition | undefined): boolean {
+export function useIsVisible(
+  condition: VisibilityCondition | undefined,
+): boolean {
   const { isVisible } = useVisibility();
   return isVisible(condition);
 }

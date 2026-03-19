@@ -1,8 +1,22 @@
-import type { Metadata } from 'next';
+import type { Metadata } from "next";
+import localFont from "next/font/local";
+import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/theme-provider";
+import "./globals.css";
+
+const geistSans = localFont({
+  src: "./fonts/GeistVF.woff",
+  variable: "--font-geist-sans",
+});
+
+const geistMono = localFont({
+  src: "./fonts/GeistMonoVF.woff",
+  variable: "--font-geist-mono",
+});
 
 export const metadata: Metadata = {
-  title: 'json-render Dashboard Demo',
-  description: 'AI-powered dashboard widget generator with guardrails',
+  title: "Dashboard | json-render",
+  description: "AI-generated dashboard widgets with guardrails",
 };
 
 export default function RootLayout({
@@ -11,17 +25,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
-        style={{
-          margin: 0,
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-          backgroundColor: '#f9fafb',
-          minHeight: '100vh',
-        }}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        {children}
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

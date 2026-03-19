@@ -5,16 +5,31 @@ export type {
   DynamicNumber,
   DynamicBoolean,
   UIElement,
-  UITree,
+  FlatElement,
+  Spec,
   VisibilityCondition,
-  LogicExpression,
-  AuthState,
-  DataModel,
+  StateCondition,
+  ItemCondition,
+  IndexCondition,
+  SingleCondition,
+  AndCondition,
+  OrCondition,
+  StateModel,
+  StateStore,
   ComponentSchema,
   ValidationMode,
   PatchOp,
   JsonPatch,
-} from './types';
+  // SpecStream types
+  SpecStreamLine,
+  SpecStreamCompiler,
+  // Mixed stream types (chat + GenUI)
+  MixedStreamCallbacks,
+  MixedStreamParser,
+  // AI SDK stream transform
+  StreamChunk,
+  SpecDataPart,
+} from "./types";
 
 export {
   DynamicValueSchema,
@@ -24,23 +39,56 @@ export {
   resolveDynamicValue,
   getByPath,
   setByPath,
-} from './types';
+  addByPath,
+  removeByPath,
+  findFormValue,
+  // SpecStream - streaming format for building specs (RFC 6902)
+  parseSpecStreamLine,
+  applySpecStreamPatch,
+  applySpecPatch,
+  nestedToFlat,
+  compileSpecStream,
+  createSpecStreamCompiler,
+  // Mixed stream parser (chat + GenUI)
+  createMixedStreamParser,
+  // AI SDK stream transform
+  createJsonRenderTransform,
+  pipeJsonRender,
+  SPEC_DATA_PART,
+  SPEC_DATA_PART_TYPE,
+} from "./types";
+
+// State Store
+export type { StoreAdapterConfig } from "./state-store";
+export { createStateStore } from "./state-store";
 
 // Visibility
-export type {
-  VisibilityContext,
-} from './visibility';
+export type { VisibilityContext } from "./visibility";
 
 export {
   VisibilityConditionSchema,
-  LogicExpressionSchema,
   evaluateVisibility,
-  evaluateLogicExpression,
   visibility,
-} from './visibility';
+} from "./visibility";
+
+// Prop Expressions
+export type {
+  PropExpression,
+  PropResolutionContext,
+  ComputedFunction,
+} from "./props";
+
+export {
+  resolvePropValue,
+  resolveElementProps,
+  resolveBindings,
+  resolveActionParam,
+} from "./props";
 
 // Actions
 export type {
+  ActionBinding,
+  /** @deprecated Use ActionBinding instead */
   Action,
   ActionConfirm,
   ActionOnSuccess,
@@ -49,9 +97,11 @@ export type {
   ActionDefinition,
   ResolvedAction,
   ActionExecutionContext,
-} from './actions';
+} from "./actions";
 
 export {
+  ActionBindingSchema,
+  /** @deprecated Use ActionBindingSchema instead */
   ActionSchema,
   ActionConfirmSchema,
   ActionOnSuccessSchema,
@@ -59,8 +109,10 @@ export {
   resolveAction,
   executeAction,
   interpolateString,
+  actionBinding,
+  /** @deprecated Use actionBinding instead */
   action,
-} from './actions';
+} from "./actions";
 
 // Validation
 export type {
@@ -71,7 +123,7 @@ export type {
   ValidationCheckResult,
   ValidationResult,
   ValidationContext,
-} from './validation';
+} from "./validation";
 
 export {
   ValidationCheckSchema,
@@ -80,17 +132,65 @@ export {
   runValidationCheck,
   runValidation,
   check,
-} from './validation';
+} from "./validation";
 
-// Catalog
+// Spec Structural Validation
 export type {
-  ComponentDefinition,
-  CatalogConfig,
-  Catalog,
-  InferCatalogComponentProps,
-} from './catalog';
+  SpecIssueSeverity,
+  SpecIssue,
+  SpecValidationIssues,
+  ValidateSpecOptions,
+} from "./spec-validator";
 
+export { validateSpec, autoFixSpec, formatSpecIssues } from "./spec-validator";
+
+// Schema — defines the grammar (how specs and catalogs are structured)
+export type {
+  SchemaBuilder,
+  SchemaType,
+  SchemaDefinition,
+  Schema,
+  PromptTemplate,
+  SchemaOptions,
+  BuiltInAction,
+} from "./schema";
+
+export { defineSchema } from "./schema";
+
+// Catalog — defines the vocabulary (what components and actions are available)
+export type {
+  Catalog,
+  JsonSchemaOptions,
+  PromptOptions,
+  PromptContext,
+  SpecValidationResult,
+  InferCatalogInput,
+  InferSpec,
+  InferCatalogComponents,
+  InferCatalogActions,
+  InferComponentProps,
+  InferActionParams,
+} from "./schema";
+
+export { defineCatalog } from "./schema";
+
+// User Prompt Builder
+export type { UserPromptOptions } from "./prompt";
+
+export { buildUserPrompt } from "./prompt";
+
+// Object diff & merge (format-agnostic)
+export { deepMergeSpec } from "./merge";
+export { diffToPatches } from "./diff";
+
+// Edit modes
+export type {
+  EditMode,
+  EditConfig,
+  BuildEditUserPromptOptions,
+} from "./edit-modes";
 export {
-  createCatalog,
-  generateCatalogPrompt,
-} from './catalog';
+  buildEditInstructions,
+  buildEditUserPrompt,
+  isNonEmptySpec,
+} from "./edit-modes";

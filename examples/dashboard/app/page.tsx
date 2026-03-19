@@ -1,317 +1,153 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from "react";
 import {
-  DataProvider,
-  ActionProvider,
-  VisibilityProvider,
-  useUIStream,
-  Renderer,
-} from '@json-render/react';
-import { componentRegistry } from '@/components/ui-components';
-
-// Sample data for the dashboard
-const INITIAL_DATA = {
-  analytics: {
-    revenue: 125000,
-    growth: 0.15,
-    customers: 1234,
-    orders: 567,
-    salesByRegion: [
-      { label: 'US', value: 45000 },
-      { label: 'EU', value: 35000 },
-      { label: 'Asia', value: 28000 },
-      { label: 'Other', value: 17000 },
-    ],
-    recentTransactions: [
-      { id: 'TXN001', customer: 'Acme Corp', amount: 1500, status: 'completed', date: '2024-01-15' },
-      { id: 'TXN002', customer: 'Globex Inc', amount: 2300, status: 'pending', date: '2024-01-14' },
-      { id: 'TXN003', customer: 'Initech', amount: 890, status: 'completed', date: '2024-01-13' },
-      { id: 'TXN004', customer: 'Umbrella Co', amount: 4200, status: 'completed', date: '2024-01-12' },
-    ],
-  },
-  form: {
-    dateRange: '',
-    region: '',
-  },
-};
-
-// Action handlers
-const ACTION_HANDLERS = {
-  export_report: () => {
-    alert('Exporting report... (demo)');
-  },
-  refresh_data: () => {
-    alert('Refreshing data... (demo)');
-  },
-  view_details: (params: Record<string, unknown>) => {
-    alert(`Viewing details for: ${JSON.stringify(params)}`);
-  },
-  apply_filter: () => {
-    alert('Applying filters... (demo)');
-  },
-};
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { Widget } from "@/components/widget";
+import { Header } from "@/components/header";
+import { AddWidgetCard } from "@/components/add-widget-card";
+import { SortableWidget, type SavedWidget } from "@/components/sortable-widget";
 
 function DashboardContent() {
-  const [prompt, setPrompt] = useState('');
+  const [savedWidgets, setSavedWidgets] = useState<SavedWidget[]>([]);
+  const [newWidgetCount, setNewWidgetCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const {
-    tree,
-    isStreaming,
-    error,
-    send,
-    clear,
-  } = useUIStream({
-    api: '/api/generate',
-    onError: (err) => console.error('Generation error:', err),
-  });
-
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!prompt.trim()) return;
-      await send(prompt, { data: INITIAL_DATA });
-    },
-    [prompt, send]
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
-  const examplePrompts = [
-    'Show me a revenue dashboard with key metrics and a chart of sales by region',
-    'Create a transactions table with recent orders',
-    'Build a widget showing customer count with a trend indicator',
-    'Make a simple card with total revenue and an export button',
-  ];
+  // Load saved widgets on mount
+  useEffect(() => {
+    async function loadWidgets() {
+      try {
+        const res = await fetch("/api/v1/widgets");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setSavedWidgets(data.data || []);
+      } catch (err) {
+        console.error("Failed to load widgets:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadWidgets();
+  }, []);
 
-  const hasElements = tree && Object.keys(tree.elements).length > 0;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const handleWidgetSaved = useCallback((_id: string) => {
+    // Reload saved widgets to get the new one
+    fetch("/api/v1/widgets")
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((data) => {
+        setSavedWidgets(data.data || []);
+        // Remove the new widget slot since it's now saved
+        setNewWidgetCount((prev) => Math.max(0, prev - 1));
+      });
+  }, []);
+
+  const handleAddWidget = useCallback(() => {
+    setNewWidgetCount((prev) => prev + 1);
+  }, []);
+
+  const handleClearWidget = useCallback(async (id?: string) => {
+    if (id) {
+      // Delete from database
+      await fetch(`/api/v1/widgets/${id}`, { method: "DELETE" });
+      setSavedWidgets((prev) => prev.filter((w) => w.id !== id));
+    } else {
+      // Just remove the new widget slot
+      setNewWidgetCount((prev) => Math.max(0, prev - 1));
+    }
+  }, []);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setSavedWidgets((items) => {
+        const oldIndex = items.findIndex((item) => item.id === active.id);
+        const newIndex = items.findIndex((item) => item.id === over.id);
+        const newItems = arrayMove(items, oldIndex, newIndex);
+
+        // Persist the new order to the server
+        fetch("/api/v1/widgets/reorder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderedIds: newItems.map((w) => w.id) }),
+        }).catch((err) => console.error("Failed to save widget order:", err));
+
+        return newItems;
+      });
+    }
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '32px' }}>
-        <h1
-          style={{
-            margin: '0 0 8px 0',
-            fontSize: '28px',
-            fontWeight: 700,
-            color: '#111827',
-          }}
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1 p-6">
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          json-render Dashboard Demo
-        </h1>
-        <p style={{ margin: 0, color: '#6b7280', fontSize: '16px' }}>
-          AI-powered widget generation with guardrails. Only catalog components can be generated.
-        </p>
-      </div>
-
-      {/* Input Form */}
-      <div
-        style={{
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          border: '1px solid #e5e7eb',
-          padding: '20px',
-          marginBottom: '24px',
-        }}
-      >
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-            <input
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the widget you want to create..."
-              style={{
-                flex: 1,
-                padding: '12px 16px',
-                borderRadius: '8px',
-                border: '1px solid #d1d5db',
-                fontSize: '15px',
-                outline: 'none',
-              }}
-              disabled={isStreaming}
-            />
-            <button
-              type="submit"
-              disabled={isStreaming || !prompt.trim()}
-              style={{
-                padding: '12px 24px',
-                backgroundColor: isStreaming ? '#9ca3af' : '#6366f1',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                fontSize: '15px',
-                fontWeight: 500,
-                cursor: isStreaming ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {isStreaming ? 'Generating...' : 'Generate'}
-            </button>
-            <button
-              type="button"
-              onClick={clear}
-              style={{
-                padding: '12px 20px',
-                backgroundColor: '#fff',
-                color: '#374151',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '15px',
-                fontWeight: 500,
-                cursor: 'pointer',
-              }}
-            >
-              Clear
-            </button>
-          </div>
-
-          {/* Example Prompts */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-            <span style={{ fontSize: '13px', color: '#6b7280', marginRight: '4px' }}>
-              Try:
-            </span>
-            {examplePrompts.map((example, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setPrompt(example)}
-                style={{
-                  padding: '4px 10px',
-                  backgroundColor: '#f3f4f6',
-                  border: 'none',
-                  borderRadius: '4px',
-                  fontSize: '12px',
-                  color: '#4b5563',
-                  cursor: 'pointer',
-                }}
-              >
-                {example.slice(0, 40)}...
-              </button>
-            ))}
-          </div>
-        </form>
-      </div>
-
-      {/* Error Display */}
-      {error && (
-        <div
-          style={{
-            padding: '16px',
-            backgroundColor: '#fef2f2',
-            border: '1px solid #fca5a5',
-            borderRadius: '8px',
-            marginBottom: '24px',
-            color: '#991b1b',
-          }}
-        >
-          <strong>Error:</strong> {error.message}
-        </div>
-      )}
-
-      {/* Generated UI */}
-      <div
-        style={{
-          backgroundColor: '#fff',
-          borderRadius: '12px',
-          border: '1px solid #e5e7eb',
-          padding: '24px',
-          minHeight: '300px',
-        }}
-      >
-        {!hasElements && !isStreaming ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', color: '#9ca3af' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎨</div>
-            <p style={{ fontSize: '16px', margin: 0 }}>
-              Enter a prompt above to generate a dashboard widget
-            </p>
-          </div>
-        ) : tree ? (
-          <Renderer
-            tree={tree}
-            registry={componentRegistry}
-            loading={isStreaming}
-          />
-        ) : null}
-      </div>
-
-      {/* Debug: Show generated JSON */}
-      {hasElements && (
-        <details style={{ marginTop: '24px' }}>
-          <summary
-            style={{
-              cursor: 'pointer',
-              fontSize: '14px',
-              color: '#6b7280',
-              marginBottom: '8px',
-            }}
+          <SortableContext
+            items={savedWidgets.map((w) => w.id)}
+            strategy={rectSortingStrategy}
           >
-            View Generated JSON
-          </summary>
-          <pre
-            style={{
-              backgroundColor: '#1f2937',
-              color: '#e5e7eb',
-              padding: '16px',
-              borderRadius: '8px',
-              overflow: 'auto',
-              fontSize: '12px',
-            }}
-          >
-            {JSON.stringify(tree, null, 2)}
-          </pre>
-        </details>
-      )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Saved widgets */}
+              {savedWidgets.map((widget) => (
+                <SortableWidget
+                  key={widget.id}
+                  widget={widget}
+                  onDeleted={() => handleClearWidget(widget.id)}
+                />
+              ))}
 
-      {/* Info Box */}
-      <div
-        style={{
-          marginTop: '32px',
-          padding: '20px',
-          backgroundColor: '#eff6ff',
-          borderRadius: '8px',
-          border: '1px solid #bfdbfe',
-        }}
-      >
-        <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', color: '#1e40af' }}>
-          How json-render Works
-        </h3>
-        <ul
-          style={{
-            margin: 0,
-            paddingLeft: '20px',
-            color: '#1e40af',
-            fontSize: '14px',
-            lineHeight: 1.6,
-          }}
-        >
-          <li>
-            <strong>Guardrails:</strong> AI can only generate components from the catalog (Card,
-            Metric, Chart, etc.)
-          </li>
-          <li>
-            <strong>Data Binding:</strong> Components reference data paths like{' '}
-            <code>/analytics/revenue</code>
-          </li>
-          <li>
-            <strong>Named Actions:</strong> Buttons declare actions like{' '}
-            <code>export_report</code> - you control what they do
-          </li>
-          <li>
-            <strong>Your Design System:</strong> The catalog maps to your actual React components
-          </li>
-        </ul>
-      </div>
+              {/* New empty widgets */}
+              {Array.from({ length: newWidgetCount }).map((_, i) => (
+                <Widget
+                  key={`new-${i}`}
+                  onSaved={handleWidgetSaved}
+                  onDeleted={() => handleClearWidget()}
+                />
+              ))}
+
+              {/* Add widget card */}
+              <AddWidgetCard onClick={handleAddWidget} />
+            </div>
+          </SortableContext>
+        </DndContext>
+      </main>
     </div>
   );
 }
 
 export default function DashboardPage() {
-  return (
-    <DataProvider initialData={INITIAL_DATA}>
-      <VisibilityProvider>
-        <ActionProvider handlers={ACTION_HANDLERS}>
-          <DashboardContent />
-        </ActionProvider>
-      </VisibilityProvider>
-    </DataProvider>
-  );
+  return <DashboardContent />;
 }

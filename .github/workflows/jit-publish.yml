@@ -1,0 +1,88 @@
+name: Publish jit-render
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: jit-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Build and publish jit-render
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build @json-render/core
+        run: pnpm turbo run build --filter=@json-render/core
+
+      - name: Build jit-render
+        run: pnpm turbo run build --filter=jit-render
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          node -e "
+          const fs = require('fs');
+          const glob = require('path');
+
+          const pkgs = ['packages/webjsx/package.json'];
+          let bumped = false;
+
+          for (const pkgPath of pkgs) {
+            const full = glob.join(process.cwd(), pkgPath);
+            const pkg = JSON.parse(fs.readFileSync(full, 'utf8'));
+            if (pkg.name !== 'jit-render') continue;
+            const parts = pkg.version.split('.').map(Number);
+            parts[2] += 1;
+            pkg.version = parts.join('.');
+            fs.writeFileSync(full, JSON.stringify(pkg, null, 2) + '\n');
+            console.log('Bumped', pkg.name, 'to', pkg.version);
+            bumped = true;
+          }
+
+          if (bumped) {
+            require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'bumped=true\n');
+          }
+          "
+
+      - name: Commit version bumps
+        if: steps.bump.outputs.bumped == 'true'
+        run: |
+          git add packages/webjsx/package.json
+          git diff --staged --quiet || git commit -m "chore: bump jit-render version [skip ci]"
+          git push
+
+      - name: Publish jit-render
+        run: pnpm publish --filter=jit-render --access public --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
